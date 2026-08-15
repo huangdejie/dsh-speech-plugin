@@ -1,0 +1,7 @@
+# The dsh-speech-plugin bundle layer: mounts the speech plugin itself.
+# The row name is this package, so the Host Loader imports its node half
+# (lib/index.js) and the browser module registry serves its client half
+# (lib/client.js, declared by package.json dsh.client).
+- insert:
+    - id: ui-speech
+      name: dsh-speech-plugin
