@@ -53,9 +53,11 @@ interface SessionSpeech {
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
-  // jsdom and non-browser boots implement neither window nor speechSynthesis;
-  // degrade silently so those environments stay green.
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+  // Non-browser boots (node e2e, SSR-ish environments) implement neither
+  // window nor Audio; degrade silently so those environments stay green. The
+  // cloud path needs only Audio — system voices are additionally detected in
+  // the controller when it falls back.
+  if (typeof window === 'undefined' || typeof Audio === 'undefined') return
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-speech: dictionaries')
 

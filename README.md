@@ -1,12 +1,49 @@
 # dsh-speech-plugin
 
-DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落定的助手消息加一个「播报」按钮，并提供「自动播报」开关。使用浏览器内置 Web Speech API（`window.speechSynthesis`），零 API key、零成本、离线可用。不修改 harness 仓库任何源代码。
+DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落定的助手消息加一个「播报」按钮，并提供「自动播报」开关。优先使用云端 TTS（阿里百炼 / 火山豆包语音，神经音色），不可用时自动回退浏览器 Web Speech API。不修改 harness 仓库任何源代码。
 
 ## 功能
 
-- **每条消息 🔊 按钮**：落在助手消息操作条（复制/分支/点赞旁边）。点击朗读该条回复的文本（只读正文，跳过思考与工具调用块）；朗读中再点即停止。朗读中的按钮显示停止图标。
+- **每条消息 🔊 按钮**：落在助手消息操作条（复制/分支/点赞旁边）。点击朗读该条回复的正文（自动剥离 markdown、跳过代码块与图片）；朗读中再点即停止。
 - **自动播报开关**：会话头部工具区的喇叭按钮。开启后，新落定的助手消息自动朗读；历史消息（包括翻页加载的更早消息）不播。偏好持久化在 Host 设置文档（`ui-speech` namespace），跨标签页一致。默认关闭——浏览器会拦截无用户激活的自动发声，显式点击开关即完成激活。
-- **特性检测**：环境没有 `speechSynthesis`（jsdom、非浏览器）时插件静默不注册，不报错。
+- **云端 TTS（v2）**：host 侧路由 `/dsh-speech/tts` 代理合成请求，API key 只存在于 host 进程环境变量，浏览器永远接触不到。同文本命中内存缓存，重复点击不重复计费。
+- **自动回退**：未配置云端引擎、key 无效、网络失败或文本超长时，自动退回系统音色（`speechSynthesis`）继续播报。
+- **特性检测**：非浏览器环境（jsdom、node e2e）没有 `window`/`Audio` 时插件静默不注册，不报错。
+
+## 云端 TTS 配置
+
+引擎选择逻辑（config `engine`）：
+
+| engine | 行为 |
+|---|---|
+| `auto`（默认） | 有 `DASHSCOPE_API_KEY` 用百炼；否则有火山凭据用火山；否则系统音色 |
+| `dashscope` | 强制百炼（缺 key 启动日志提示，路由 503 → 浏览器回退） |
+| `volcengine` | 强制火山豆包语音 |
+| `system` | 永远用浏览器系统音色 |
+
+环境变量（放 harness 仓库根目录 `.env`，和 `DEEPSEEK_API_KEY` 同一处）：
+
+```sh
+DASHSCOPE_API_KEY=sk-...                    # 阿里百炼 API key
+VOLCENGINE_TTS_ACCESS_TOKEN=...             # 火山引擎 access token
+VOLCENGINE_TTS_APP_ID=...                   # 火山 app id（也可用 config 的 volcengineAppId）
+```
+
+可选配置：在 profile 的 `cordis.patch.yml`（`~/.dsh/profiles/web/cordis.patch.yml`）里覆盖插件行——
+
+```yaml
+- id: ui-speech
+  config:
+    engine: volcengine          # auto | system | dashscope | volcengine
+    dashscopeModel: qwen3-tts-flash
+    dashscopeVoice: Cherry
+    volcengineVoice: zh_male_M392_conversation_wvae_bigtts
+    volcengineModel: ''         # 留空用服务端默认；如 seed-tts-1.1
+    maxTextLength: 2000         # 单条消息合成字符上限（成本闸门，超出回退系统音色）
+    cacheEntries: 64            # 合成结果内存缓存条数
+```
+
+计费与音色列表见官方文档：[百炼语音合成](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、[火山豆包语音 V1 接口](https://www.volcengine.com/docs/6561/1257584)。长消息自动按句切成引擎限额内的分段顺序合成播放。
 
 ## 安装（针对源码运行的 fork）
 
@@ -40,9 +77,16 @@ pnpm dsh plugin --profile web remove dsh-speech-plugin
 ## 结构
 
 ```
+src/config.ts            插件 Config schema（引擎/模型/音色/上限/缓存）+ 默认值
 src/speech-settings.ts   共享设置 schema（announce: 'off' | 'on'，默认 off）
-src/index.ts             host 半：注册 ui-speech 设置 namespace
-src/client/controller.ts 每会话控制器：speechSynthesis 封装（toggle/stop/状态可观察）
+src/index.ts             host 半：设置 namespace + /dsh-speech/tts 路由
+src/tts/types.ts         provider 契约（分段合成、媒体类型、限额）
+src/tts/dashscope.ts     阿里百炼 provider（REST，Bearer key，Base64 wav）
+src/tts/volcengine.ts    火山豆包 provider（V1 REST，Bearer;<token>，Base64 mp3）
+src/tts/split-text.ts    按句切分成引擎限额内的分段
+src/tts/service.ts       引擎解析（auto 优先级）+ 顺序合成 + LRU 缓存
+src/client/controller.ts 每会话控制器：云端分段播放，失败回退 speechSynthesis
+src/client/clean-text.ts markdown/代码块剥离，只留可读文本
 src/client/speech-watcher.ts  自动播报：订阅会话快照，水位线区分新旧消息
 src/client/SpeechActions.tsx  消息操作条 🔊 按钮
 src/client/AnnounceToggle.tsx 会话头部自动播报开关
@@ -53,7 +97,8 @@ src/client/index.ts      插槽注册（assistant-actions + header.utilities）
 
 ## 已知限制与后续
 
-- 音色为操作系统自带（macOS「婷婷」等）；`voice`/`rate` 偏好未暴露。
-- 长文本不分块；个别引擎对超长 utterance 有截断。
+- 云端合成为「整段完成后开speak」：长消息首响延迟 = 全部分段合成完。流式打字机播报（首句先响）是规划的 v3。
+- 火山走 V1 非流式接口（官方标注推荐 V3 SSE）；如需更低延迟可升级，provider 接口不变。
+- 引擎/音色是部署级配置（cordis.yml），浏览器内切换音色 UI 未做。
 - 自动播报按「新落定」触发：订阅建立时已在场的消息不播（水位线机制，防止回放历史）。切换会话期间，仍在生成的旧会话消息完成时也会播报。
-- 云端 TTS（真人音色）与流式打字机播报是规划中的 v2/v3：控制器 `toggle` 即替换缝，host 半加一个音频路由即可，UI 与订阅层不用动。
+- 回退的系统音色质量取决于操作系统；macOS 可在 系统设置 → 辅助功能 → 朗读内容 下载增强版中文音色。
