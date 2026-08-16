@@ -12,6 +12,9 @@ import { cleanTextForSpeech } from './clean-text.ts'
 /** Host route answering cloud synthesis; same origin as the chat UI. */
 const TTS_ROUTE = '/dsh-speech/tts'
 
+/** Whole-message budget; multi-chunk synthesis of a long reply fits inside. */
+const ROUTE_TIMEOUT_MS = 120_000
+
 /** Immutable view published to every speech control in one Session. */
 export interface SpeechView {
   /** Message currently being spoken, or null when idle. */
@@ -32,6 +35,7 @@ interface TtsOk {
 interface TtsFail {
   readonly ok: false
   readonly code: string
+  readonly message?: string
 }
 
 /** Pick a voice matching the UI language, tolerating an initially empty voices list. */
@@ -119,10 +123,15 @@ export class SpeechController implements HostObservable<SpeechView> {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(ROUTE_TIMEOUT_MS),
       })
       if (generation !== this.generation) return
       const payload = await response.json() as TtsOk | TtsFail
       if (!response.ok || !payload.ok) {
+        // Every fallback announces itself: an invisible engine switch reads
+        // as a bug ("sometimes the AI voice, sometimes the system voice").
+        const reason = payload.ok ? `http ${response.status}` : `${payload.code}: ${payload.message ?? ''}`
+        console.warn(`[dsh-speech] cloud TTS unavailable (${reason}); using system voices`)
         this.playSystem(messageId, text)
         return
       }
@@ -136,9 +145,14 @@ export class SpeechController implements HostObservable<SpeechView> {
         }
       }
       this.publishIdle(messageId)
-    } catch {
-      // Offline or route failure: system voices still work.
-      if (generation === this.generation) this.playSystem(messageId, text)
+    } catch (error) {
+      // Offline, timeout, or route failure: system voices still work.
+      if (generation !== this.generation) return
+      console.warn(
+        '[dsh-speech] cloud TTS request failed'
+        + ` (${error instanceof Error ? error.message : String(error)}); using system voices`,
+      )
+      this.playSystem(messageId, text)
     }
   }
 

@@ -9,7 +9,16 @@ import type { CloudEngine, SpeechPluginConfig } from '../config.ts'
 import { dashscopeProvider } from './dashscope.ts'
 import { volcengineProvider } from './volcengine.ts'
 import { splitForSpeech } from './split-text.ts'
-import type { TtsProvider, TtsResponse } from './types.ts'
+import { TtsError, type TtsProvider, type TtsResponse } from './types.ts'
+
+/** Attempts per chunk: the original call plus two retries for transient failures. */
+const MAX_ATTEMPTS = 3
+
+/** Backoff between retries, linear in the attempt number. */
+const RETRY_DELAY_MS = 400
+
+/** Promise-based delay without a trailing-timer leak risk. */
+const delay = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms) })
 
 /** Route answer when no cloud engine is usable. */
 export interface EngineUnavailable {
@@ -122,8 +131,21 @@ export class SpeechTTSService {
     const chunks = splitForSpeech(text, provider.maxChars)
     const parts: string[] = []
     for (const chunk of chunks) {
-      const segment = await provider.synthesize(chunk)
-      parts.push(segment.base64)
+      // Transient failures (throttle, busy backend, timeout) are retried in
+      // place; deterministic ones surface immediately and the browser falls
+      // back to system voices for the whole message.
+      let base64: string | undefined
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        try {
+          base64 = (await provider.synthesize(chunk)).base64
+          break
+        } catch (error) {
+          const retryable = error instanceof TtsError && error.retryable
+          if (!retryable || attempt === MAX_ATTEMPTS) throw error
+          await delay(RETRY_DELAY_MS * attempt)
+        }
+      }
+      parts.push(base64!)
     }
     const response: TtsResponse = {
       ok: true,

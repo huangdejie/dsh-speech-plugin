@@ -1,5 +1,17 @@
 /** Provider contract shared by the cloud TTS engines. */
 
+/** Provider failure carrying whether an identical retry can succeed. */
+export class TtsError extends Error {
+  /**
+   * @param message - provider diagnostic for logs and the route answer.
+   * @param retryable - true for transient failures (timeout, 5xx, throttle,
+   *   provider-busy); false for deterministic ones (auth, voice, text).
+   */
+  constructor(message: string, readonly retryable: boolean) {
+    super(message)
+  }
+}
+
 /** One synthesized audio segment, Base64-encoded, plus its media type. */
 export interface TtsSegment {
   /** Base64 audio bytes ready for a browser Blob. */

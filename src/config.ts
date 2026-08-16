@@ -39,7 +39,7 @@ export const Config: z<SpeechPluginConfig> = z.object({
   volcengineAppId: z.string().default(''),
   volcengineVoice: z.string().default('zh_male_M392_conversation_wvae_bigtts'),
   volcengineModel: z.string().default(''),
-  maxTextLength: z.natural().default(2000),
+  maxTextLength: z.natural().default(8000),
   cacheEntries: z.natural().default(64),
 })
 
@@ -54,6 +54,6 @@ export const DEFAULT_CONFIG: SpeechPluginConfig = {
   volcengineAppId: '',
   volcengineVoice: 'zh_male_M392_conversation_wvae_bigtts',
   volcengineModel: '',
-  maxTextLength: 2000,
+  maxTextLength: 8000,
   cacheEntries: 64,
 }

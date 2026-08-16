@@ -5,12 +5,30 @@
  * is the simplest request/response contract and fits non-streaming playback.
  */
 import { randomUUID } from 'node:crypto'
-import type { TtsProvider, TtsProviderConfig, TtsSegment } from './types.ts'
+import { TtsError, type TtsProvider, type TtsProviderConfig, type TtsSegment } from './types.ts'
 
 const ENDPOINT = 'https://openspeech.bytedance.com/api/v1/tts'
 
 /** 1024 UTF-8 bytes per request; 280 chars stay under it even in pure CJK. */
 const MAX_CHARS = 280
+
+/** One chunk synthesis budget; timeouts are transient by nature. */
+const REQUEST_TIMEOUT_MS = 30_000
+
+/** Volcengine codes an identical retry can clear: concurrency cap and busy backend. */
+const RETRYABLE_CODES = new Set([3003, 3005])
+
+/** Run one fetch, classifying network and timeout throws as retryable. */
+async function fetchOrRetryable(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+  } catch (error) {
+    throw new TtsError(
+      `volcengine tts request failed: ${error instanceof Error ? error.message : String(error)}`,
+      true,
+    )
+  }
+}
 
 /** V1 response payload shape (only the fields read). */
 interface VolcenginePayload {
@@ -35,7 +53,7 @@ export function volcengineProvider(
     contentType: 'audio/mpeg',
     maxChars: MAX_CHARS,
     async synthesize(text: string): Promise<TtsSegment> {
-      const response = await fetch(ENDPOINT, {
+      const response = await fetchOrRetryable(ENDPOINT, {
         method: 'POST',
         headers: {
           // The V1 wire format separates the scheme and token with a semicolon.
@@ -56,12 +74,13 @@ export function volcengineProvider(
       })
       const payload = await response.json() as VolcenginePayload
       if (!response.ok || payload.code !== 3000) {
-        throw new Error(
+        throw new TtsError(
           `volcengine tts failed (${String(payload.code ?? response.status)}): ${payload.message ?? ''}`.trim(),
+          RETRYABLE_CODES.has(payload.code ?? 0),
         )
       }
       if (payload.data === undefined || payload.data === '') {
-        throw new Error('volcengine tts response carried no audio')
+        throw new TtsError('volcengine tts response carried no audio', false)
       }
       return { base64: payload.data, contentType: 'audio/mpeg' }
     },
