@@ -90,30 +90,33 @@ export function apply(ctx: Context, config: SpeechPluginConfig = DEFAULT_CONFIG)
           response.end(JSON.stringify({ ok: false, code: 'text-too-long' }))
           return
         }
-        let result: Awaited<ReturnType<SpeechTTSService['synthesize']>>
+        const described = service.describe()
+        if (described === undefined) {
+          response.writeHead(503, { 'content-type': 'application/json' })
+          response.end(JSON.stringify({ ok: false, code: 'tts-unavailable' }))
+          return
+        }
+        // NDJSON stream: one JSON line per audio part as it is synthesized, so
+        // playback starts with the first chunk instead of after the whole
+        // message. Validation failures above stay plain JSON status answers.
+        response.writeHead(200, {
+          'content-type': 'application/x-ndjson',
+          'cache-control': 'no-store',
+        })
+        response.write(`${JSON.stringify({ engine: described.engine, contentType: described.contentType })}\n`)
         try {
-          result = await service.synthesize(text)
+          for await (const part of service.synthesizeParts(text)) {
+            response.write(`${JSON.stringify({ part })}\n`)
+          }
+          response.write(`${JSON.stringify({ done: true })}\n`)
         } catch (error) {
-          // A provider failure (bad credentials, network, quota) must answer,
-          // not hang the response; the browser falls back to system voices.
+          // A mid-stream failure ends the stream with an error line; parts
+          // already sent (and possibly played) are kept, the rest are dropped.
           const message = error instanceof Error ? error.message : String(error)
           httpCtx.logger.warn(`dsh-speech: tts synthesis failed: ${message}`)
-          response.writeHead(502, { 'content-type': 'application/json' })
-          response.end(JSON.stringify({ ok: false, code: 'tts-failed', message }))
-          return
+          response.write(`${JSON.stringify({ error: { code: 'tts-failed', message } })}\n`)
         }
-        if (!result.ok) {
-          response.writeHead(503, { 'content-type': 'application/json' })
-          response.end(JSON.stringify({ ok: false, code: result.code, message: result.message }))
-          return
-        }
-        response.writeHead(200, { 'content-type': 'application/json' })
-        response.end(JSON.stringify({
-          ok: true,
-          engine: result.engine,
-          contentType: result.contentType,
-          parts: result.parts,
-        }))
+        response.end()
       },
     }), 'dsh-speech: tts route')
     if (service.available()) {

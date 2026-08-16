@@ -9,12 +9,20 @@
 const SENTENCE_ENDER = /[。！？!?；;\n]/
 
 /**
- * Split one text into speech-sized chunks.
+ * Split one text into speech-sized chunks. The first chunk obeys
+ * `firstMaxChars` when smaller than `maxChars`: synthesis latency grows with
+ * text length, so a short first chunk starts playback while the rest is still
+ * synthesizing (the remaining chunks pack to the full limit).
  * @param text - cleaned plain text to speak.
  * @param maxChars - per-request character limit of the target engine.
- * @returns non-empty chunks, in order, each at most `maxChars` characters.
+ * @param firstMaxChars - character budget for the first chunk only.
+ * @returns non-empty chunks, in order, each within its budget.
  */
-export function splitForSpeech(text: string, maxChars: number): string[] {
+export function splitForSpeech(
+  text: string,
+  maxChars: number,
+  firstMaxChars: number = maxChars,
+): string[] {
   const sentences: string[] = []
   let current = ''
   for (const char of text) {
@@ -28,19 +36,24 @@ export function splitForSpeech(text: string, maxChars: number): string[] {
 
   const chunks: string[] = []
   let packed = ''
+  let limit = firstMaxChars
   const flush = (): void => {
     if (packed !== '') chunks.push(packed)
     packed = ''
+    limit = maxChars
   }
   for (const sentence of sentences) {
-    if (sentence.length > maxChars) {
+    if (sentence.length > limit) {
+      // Beyond the current budget: hard-cut at the full limit. A first
+      // sentence longer than firstMaxChars therefore skips the small-first-
+      // chunk optimization — correct, just not optimal for run-on openings.
       flush()
       for (let index = 0; index < sentence.length; index += maxChars) {
         chunks.push(sentence.slice(index, index + maxChars))
       }
       continue
     }
-    if (packed.length + sentence.length > maxChars) flush()
+    if (packed.length + sentence.length > limit) flush()
     packed += sentence
   }
   flush()

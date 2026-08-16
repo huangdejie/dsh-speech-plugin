@@ -23,15 +23,17 @@ export interface SpeechView {
 
 const IDLE: SpeechView = Object.freeze({ speakingMessageId: null })
 
-/** Successful route answer: ordered Base64 audio parts. */
-interface TtsOk {
-  readonly ok: true
-  readonly engine: string
-  readonly contentType: string
-  readonly parts: readonly string[]
+/** Any NDJSON line of the stream: head (engine/contentType), one audio part,
+ * completion, or a mid-stream failure. Exactly one role per line. */
+interface TtsStreamLine {
+  readonly engine?: string
+  readonly contentType?: string
+  readonly part?: string
+  readonly done?: boolean
+  readonly error?: { readonly code: string; readonly message?: string }
 }
 
-/** Failed route answer. */
+/** Failed route answer (plain JSON status body before any streaming). */
 interface TtsFail {
   readonly ok: false
   readonly code: string
@@ -116,8 +118,10 @@ export class SpeechController implements HostObservable<SpeechView> {
     this.listeners.clear()
   }
 
-  /** Try the cloud route; on any unavailability fall back to system voices. */
+  /** Try the cloud route, playing each streamed part as it arrives; fall back
+   * to system voices only when nothing has played yet. */
   private async playCloud(messageId: MessageId, text: string, generation: number): Promise<void> {
+    let played = false
     try {
       const response = await fetch(TTS_ROUTE, {
         method: 'POST',
@@ -126,33 +130,76 @@ export class SpeechController implements HostObservable<SpeechView> {
         signal: AbortSignal.timeout(ROUTE_TIMEOUT_MS),
       })
       if (generation !== this.generation) return
-      const payload = await response.json() as TtsOk | TtsFail
-      if (!response.ok || !payload.ok) {
+      if (!response.ok || response.body === null) {
+        const payload = await response.json().catch(() => undefined) as TtsFail | undefined
         // Every fallback announces itself: an invisible engine switch reads
         // as a bug ("sometimes the AI voice, sometimes the system voice").
-        const reason = payload.ok ? `http ${response.status}` : `${payload.code}: ${payload.message ?? ''}`
+        const reason = payload === undefined ? `http ${response.status}` : `${payload.code}: ${payload.message ?? ''}`
         console.warn(`[dsh-speech] cloud TTS unavailable (${reason}); using system voices`)
         this.playSystem(messageId, text)
         return
       }
-      for (const part of payload.parts) {
-        if (generation !== this.generation) return
-        const url = URL.createObjectURL(partBlob(part, payload.contentType))
-        try {
-          await this.playUrl(url, generation)
-        } finally {
-          URL.revokeObjectURL(url)
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let contentType = 'audio/mpeg'
+      let failed = false
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (generation !== this.generation) {
+          void reader.cancel()
+          return
         }
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let newline = buffer.indexOf('\n')
+        while (newline !== -1) {
+          const line = buffer.slice(0, newline).trim()
+          buffer = buffer.slice(newline + 1)
+          newline = buffer.indexOf('\n')
+          if (line === '') continue
+          const parsed = JSON.parse(line) as TtsStreamLine
+          if (parsed.part === undefined) {
+            if (parsed.engine !== undefined && parsed.contentType !== undefined) {
+              contentType = parsed.contentType
+            } else if (parsed.done === true) break
+            else if (parsed.error !== undefined) {
+              // Mid-stream failure: keep what already played, drop the rest.
+              console.warn(`[dsh-speech] cloud TTS stream failed (${parsed.error.code}: ${parsed.error.message ?? ''})`)
+              failed = true
+            }
+            continue
+          }
+          const url = URL.createObjectURL(partBlob(parsed.part, contentType))
+          try {
+            await this.playUrl(url, generation)
+            played = true
+          } finally {
+            URL.revokeObjectURL(url)
+          }
+          if (generation !== this.generation) return
+        }
+        if (failed) break
       }
-      this.publishIdle(messageId)
+      if (!failed) this.publishIdle(messageId)
+      else if (!played) {
+        // The very first chunk failed before any audio: fall back whole.
+        this.playSystem(messageId, text)
+      } else {
+        this.publishIdle(messageId)
+      }
     } catch (error) {
       // Offline, timeout, or route failure: system voices still work.
       if (generation !== this.generation) return
-      console.warn(
-        '[dsh-speech] cloud TTS request failed'
-        + ` (${error instanceof Error ? error.message : String(error)}); using system voices`,
-      )
-      this.playSystem(messageId, text)
+      if (!played) {
+        console.warn(
+          '[dsh-speech] cloud TTS request failed'
+          + ` (${error instanceof Error ? error.message : String(error)}); using system voices`,
+        )
+        this.playSystem(messageId, text)
+      } else {
+        this.publishIdle(messageId)
+      }
     }
   }
 

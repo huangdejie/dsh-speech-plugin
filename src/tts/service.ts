@@ -17,18 +17,15 @@ const MAX_ATTEMPTS = 3
 /** Backoff between retries, linear in the attempt number. */
 const RETRY_DELAY_MS = 400
 
+/** First-chunk character budget: synthesis latency grows with length, so a
+ * short opener starts playback in ~1-2s while the rest synthesizes behind it. */
+const FIRST_CHUNK_CHARS = 80
+
 /** Promise-based delay without a trailing-timer leak risk. */
 const delay = (ms: number): Promise<void> => new Promise(resolve => { setTimeout(resolve, ms) })
 
-/** Route answer when no cloud engine is usable. */
-export interface EngineUnavailable {
-  readonly ok: false
-  readonly code: 'tts-unavailable'
-  readonly message: string
-}
-
-/** Whole-message synthesis result, or the unavailable marker. */
-export type SynthesisResult = TtsResponse | EngineUnavailable
+/** No cloud engine is usable; the browser falls back to system voices. */
+export class UnavailableError extends Error {}
 
 /** Resolve the Volcengine console API Key from the environment. */
 function volcengineApiKey(): string | undefined {
@@ -99,28 +96,41 @@ export class SpeechTTSService {
   }
 
   /**
-   * Synthesize one whole message.
-   * @param text - cleaned plain text; at most `maxTextLength` characters.
-   * @returns the cached or fresh response, or the unavailable marker.
+   * The active provider's engine and media type, for the stream's header.
    */
-  async synthesize(text: string): Promise<SynthesisResult> {
+  describe(): { engine: string; contentType: string } | undefined {
     const resolved = this.provider()
-    if (!('provider' in resolved)) {
-      return { ok: false, code: 'tts-unavailable', message: resolved.reason }
-    }
+    return 'provider' in resolved
+      ? { engine: resolved.provider.engine, contentType: resolved.provider.contentType }
+      : undefined
+  }
+
+  /**
+   * Synthesize one message, yielding each Base64 part the moment it is ready
+   * so playback starts with the first chunk instead of waiting for the whole
+   * message. A cache hit yields every part immediately. The cache is written
+   * only after the final part, so a partial failure never poisons it.
+   * @param text - cleaned plain text; at most `maxTextLength` characters.
+   * @yields Base64 audio parts in playback order.
+   */
+  async *synthesizeParts(text: string): AsyncGenerator<string, void, undefined> {
+    const resolved = this.provider()
+    if (!('provider' in resolved)) throw new UnavailableError(resolved.reason)
     const provider = resolved.provider
     const cacheKey = createHash('sha1')
       .update(`${provider.engine}\0${provider.settingsKey}\0${text}`)
       .digest('hex')
     const cached = this.cache.get(cacheKey)
-    if (cached !== undefined) return cached
+    if (cached !== undefined) {
+      for (const part of cached.parts) yield part
+      return
+    }
 
-    const chunks = splitForSpeech(text, provider.maxChars)
+    const chunks = splitForSpeech(text, provider.maxChars, FIRST_CHUNK_CHARS)
     const parts: string[] = []
     for (const chunk of chunks) {
       // Transient failures (throttle, busy backend, timeout) are retried in
-      // place; deterministic ones surface immediately and the browser falls
-      // back to system voices for the whole message.
+      // place; deterministic ones surface immediately and stop the stream.
       let base64: string | undefined
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
         try {
@@ -133,6 +143,7 @@ export class SpeechTTSService {
         }
       }
       parts.push(base64!)
+      yield base64!
     }
     const response: TtsResponse = {
       ok: true,
@@ -146,6 +157,5 @@ export class SpeechTTSService {
       if (oldest === undefined) break
       this.cache.delete(oldest)
     }
-    return response
   }
 }
