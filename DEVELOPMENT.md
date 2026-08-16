@@ -112,8 +112,9 @@ pnpm run typecheck                 # tsc --noEmit
 ## 分发
 
 - **npm（推荐）**：`pnpm run build && pnpm publish`，`files` 字段已列构建产物；用户 `dsh plugin --profile web add dsh-speech-plugin` 即装即用。
-- **GitHub 直装有构建陷阱**：git 安装拉到源码且 `lib/` 不入库，需要包内自足的 `prepare` 脚本，且 pnpm ≥10 要求用户在 profile 的 `pnpm-workspace.yaml` 里 `allowBuilds` 放行——除非专门适配，否则走 npm。
-- 仓库可加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题便于被发现：`gh repo edit --add-topic dsh-plugin`。
+- **GitHub 直装**：`lib/` 构建产物提交入库（`.gitignore` 不忽略），`dsh plugin add github:huangdejie/dsh-speech-plugin#<sha>` 不需要任何生命周期脚本即可安装。改代码发布前记得 `pnpm run build` 并把产物一并提交，否则 git 装的用户拿到旧产物。
+- **DSH Hub（dsh-hub.cc）**：在 [publish 页](https://dsh-hub.cc/publish) 用 GitHub 登录直接提交仓库地址（校验项是 package.json 的 `dsh.bundle.patch`）；`dsh-plugin` topic 也会被定时自动同步。
+- 仓库已挂 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题便于被发现。
 
 ## 已知限制（开发者视角）
 
