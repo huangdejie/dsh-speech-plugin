@@ -1,26 +1,22 @@
 /**
  * Speech plugin, browser half: the per-message speak button in the
  * assistant-message action strip and the auto-announce toggle in the session
- * header, over the Web Speech API and the `ui-speech` settings namespace.
+ * header, over the Host cloud-TTS route (Web Speech API fallback) and a
+ * browser-local announce preference.
  * @module dsh-speech-plugin/client
  */
-import type { ClientContext, SessionId, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: pulls the ui-conversation SlotMap merges (both target slots).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-// Type-only: pulls the settingsScope Context merge (ctx.settingsScope).
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import {
-  ANNOUNCE_FIELD, DEFAULT_ANNOUNCE_MODE, SPEECH_SETTINGS_NAMESPACE,
-  type AnnounceMode, type SpeechSettings,
-} from '../speech-settings.ts'
 import { SpeechController } from './controller.ts'
 import { watchSessionSpeech } from './speech-watcher.ts'
 import { SpeechActions } from './SpeechActions.tsx'
 import { AnnounceToggle } from './AnnounceToggle.tsx'
 import { SPEECH_CSS } from './styles.ts'
 import { en, zh, type SpeechKey } from './locales.ts'
+import { createAnnounceStore } from './announce-store.ts'
 import type { AnnounceToggleInjected, SpeechInjected } from './slots.ts'
 
 export type {
@@ -28,6 +24,7 @@ export type {
 } from './slots.ts'
 export type { SpeechKey } from './locales.ts'
 export type { SpeechView } from './controller.ts'
+export type { AnnounceMode, AnnounceState, AnnounceStore } from './announce-store.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -39,8 +36,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'speech'
 
-/** Required services: the slot registry, session bindings, copy, and the settings transport. */
-export const inject = ['slots', 'sessions', 'locale', 'connection', 'remote', 'settingsScope']
+/** Required services: the slot registry, session bindings, and the copy. */
+export const inject = ['slots', 'sessions', 'locale']
 
 /** Per-Session speech resources: one controller plus one auto-announce watcher. */
 interface SessionSpeech {
@@ -69,14 +66,8 @@ export function apply(ctx: ClientContext): void {
     return () => { tag.remove() }
   }, 'dsh-speech: stylesheet')
 
-  const scope: SettingsScope<SpeechSettings> = ctx.settingsScope.bind<SpeechSettings>({
-    namespace: SPEECH_SETTINGS_NAMESPACE,
-  })
-  const announceEnabled = (): boolean => scope.getSnapshot().value?.announce === 'on'
-  const announceView = {
-    getSnapshot: (): AnnounceMode => scope.getSnapshot().value?.announce ?? DEFAULT_ANNOUNCE_MODE,
-    subscribe: (listener: () => void): (() => void) => scope.subscribe(listener),
-  }
+  const announce = createAnnounceStore()
+  const announceEnabled = (): boolean => announce.getSnapshot() === 'on'
 
   const sessions = new Map<SessionId, SessionSpeech>()
   const resourcesFor = (sessionId: SessionId): SessionSpeech => {
@@ -130,10 +121,16 @@ export function apply(ctx: ClientContext): void {
       id: 'speech',
       order: 20,
       locale: NS,
-      inject: (): AnnounceToggleInjected => ({
-        hooks: { announce: announceView },
-        setAnnounce: mode => { void scope.set(ANNOUNCE_FIELD, mode) },
-      }),
+      // The header mounts the moment a session opens, so resolving resources
+      // here starts the watcher before any message exists — the first settled
+      // message of a session announces too, not just later ones.
+      inject: (sessionId): AnnounceToggleInjected => {
+        void resourcesFor(sessionId)
+        return {
+          hooks: { announce },
+          setAnnounce: mode => { announce.set(mode) },
+        }
+      },
     }, AnnounceToggle)
     return dispose
   })

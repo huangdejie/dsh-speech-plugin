@@ -1,27 +1,19 @@
 /**
- * Speech plugin, node half: registers the durable `ui-speech` settings
- * section and the cloud-TTS route (`/dsh-speech/tts`) when its Host services
- * are composed. Credentials stay in this process's environment and never
- * reach the browser. The browser half ships as exports["./client"], discovered
- * through this package's `dsh.client` declaration.
+ * Speech plugin, node half: the cloud-TTS route (`/dsh-speech/tts`). Provider
+ * credentials stay in this process's environment and never reach the browser;
+ * the announce preference is browser-local (see the client half). The browser
+ * half ships as exports["./client"], discovered through this package's
+ * `dsh.client` declaration.
  */
 import type { IncomingMessage } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
 // Type-only: pulls the webServer Context merge (ctx.webServer) and WebRoute.
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { Config, DEFAULT_CONFIG, type SpeechPluginConfig } from './config.ts'
-import { SPEECH_SETTINGS_NAMESPACE, SpeechSettingsSchema } from './speech-settings.ts'
 import { SpeechTTSService } from './tts/service.ts'
 
 export { Config }
-export {
-  ANNOUNCE_FIELD, ANNOUNCE_MODES, DEFAULT_ANNOUNCE_MODE, SPEECH_SETTINGS_NAMESPACE,
-  SpeechSettingsSchema, type AnnounceMode, type SpeechSettings,
-} from './speech-settings.ts'
 export type { SpeechEngine, SpeechPluginConfig } from './config.ts'
-
-const SPEECH_NAMESPACE = settingsNamespace(SPEECH_SETTINGS_NAMESPACE)
 
 const ROUTE_PATH = '/dsh-speech/tts'
 
@@ -53,10 +45,6 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
  * @param config - resolved plugin configuration.
  */
 export function apply(ctx: Context, config: SpeechPluginConfig = DEFAULT_CONFIG): void {
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.register(SPEECH_NAMESPACE, SpeechSettingsSchema)
-  })
-
   ctx.inject(['webServer'], (httpCtx) => {
     const service = new SpeechTTSService(config)
     const log = (message: string): void => {

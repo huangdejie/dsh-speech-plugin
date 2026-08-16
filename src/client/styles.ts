@@ -23,8 +23,18 @@ export const SPEECH_CSS = `
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-secondary);
 }
-.dsh-speech-action[data-active],
-.dsh-speech-toggle[data-active] {
+/* The speaking message keeps the primary label color with a resting bg. */
+.dsh-speech-action[data-active] {
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
+}
+/* The announce toggle's on state must read at a glance: success-colored icon
+   on a persistent hover-like background, versus plain tertiary when off. */
+.dsh-speech-toggle[data-active] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-state-success-primary);
+}
+.dsh-speech-toggle[data-active]:hover {
+  color: var(--dsw-alias-state-success-primary);
 }
 `

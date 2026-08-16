@@ -8,7 +8,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
-import type { AnnounceMode } from '../speech-settings.ts'
+import type { AnnounceMode } from './announce-store.ts'
 import type { SpeechView } from './controller.ts'
 
 /** Injected business face of one assistant-message speech entry. */
@@ -30,7 +30,7 @@ export type SpeechActionProps =
 /** Injected business face of the session-header auto-announce toggle. */
 export interface AnnounceToggleInjected {
   hooks: {
-    /** Current committed announce mode ('off' before the first Host view). */
+    /** Live announce preference, persisted browser-locally. */
     announce: HostObservable<AnnounceMode>
   }
   /** Persist the next announce mode. */

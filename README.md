@@ -5,7 +5,7 @@ DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落�
 ## 功能
 
 - **每条消息 🔊 按钮**：落在助手消息操作条（复制/分支/点赞旁边）。点击朗读该条回复的正文（自动剥离 markdown、跳过代码块与图片）；朗读中再点即停止。
-- **自动播报开关**：会话头部工具区的喇叭按钮。开启后，新落定的助手消息自动朗读；历史消息（包括翻页加载的更早消息）不播。偏好持久化在 Host 设置文档（`ui-speech` namespace），跨标签页一致。默认关闭——浏览器会拦截无用户激活的自动发声，显式点击开关即完成激活。
+- **自动播报开关**：会话头部工具区的喇叭按钮，开启后图标变绿色高亮。开启后，新落定的助手消息自动朗读；历史消息（包括翻页加载的更早消息）不播。偏好按**浏览器本地**持久化（声音从哪台机器的音箱出，开关就属于哪台机器；Host 设置服务的客户端可见名单目前不对树外插件开放）。默认关闭——浏览器会拦截无用户激活的自动发声，显式点击开关即完成激活。
 - **云端 TTS（v2）**：host 侧路由 `/dsh-speech/tts` 代理合成请求，API key 只存在于 host 进程环境变量，浏览器永远接触不到。同文本命中内存缓存，重复点击不重复计费。
 - **自动回退**：未配置云端引擎、key 无效、网络失败或文本超长时，自动退回系统音色（`speechSynthesis`）继续播报。
 - **特性检测**：非浏览器环境（jsdom、node e2e）没有 `window`/`Audio` 时插件静默不注册，不报错。
@@ -80,14 +80,14 @@ pnpm dsh plugin --profile web remove dsh-speech-plugin
 
 ```
 src/config.ts            插件 Config schema（引擎/模型/音色/上限/缓存）+ 默认值
-src/speech-settings.ts   共享设置 schema（announce: 'off' | 'on'，默认 off）
-src/index.ts             host 半：设置 namespace + /dsh-speech/tts 路由
+src/index.ts             host 半：/dsh-speech/tts 流式路由
 src/tts/types.ts         provider 契约（分段合成、媒体类型、限额）
 src/tts/dashscope.ts     阿里百炼 provider（REST，Bearer key，Base64 wav）
 src/tts/volcengine.ts    火山豆包 provider（V3 单向流式 HTTP，App-Id/Access-Key/Resource-Id 头）
 src/tts/split-text.ts    按句切分成引擎限额内的分段
 src/tts/service.ts       引擎解析（auto 优先级）+ 顺序合成 + LRU 缓存
 src/client/controller.ts 每会话控制器：云端分段播放，失败回退 speechSynthesis
+src/client/announce-store.ts  自动播报偏好（浏览器本地持久化 store）
 src/client/clean-text.ts markdown/代码块剥离，只留可读文本
 src/client/speech-watcher.ts  自动播报：订阅会话快照，水位线区分新旧消息
 src/client/SpeechActions.tsx  消息操作条 🔊 按钮
