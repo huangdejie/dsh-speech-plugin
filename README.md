@@ -1,14 +1,38 @@
 # dsh-speech-plugin
 
-DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落定的助手消息加一个「播报」按钮，并提供「自动播报」开关。优先使用云端 TTS（阿里百炼 / 火山豆包语音，神经音色），不可用时自动回退浏览器 Web Speech API。不修改 harness 仓库任何源代码。
+DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落定的助手消息加一个「播报」按钮，并提供「自动播报」开关。优先使用云端 TTS 神经音色（阿里百炼 / 火山豆包语音），不可用时自动回退浏览器 Web Speech API。以独立插件包安装，不修改 harness 仓库任何源代码。
 
 ## 功能
 
 - **每条消息 🔊 按钮**：落在助手消息操作条（复制/分支/点赞旁边）。点击朗读该条回复的正文（自动剥离 markdown、跳过代码块与图片）；朗读中再点即停止。
-- **自动播报开关**：会话头部工具区的喇叭按钮，开启后图标变绿色高亮。开启后，新落定的助手消息自动朗读；历史消息（包括翻页加载的更早消息）不播。偏好按**浏览器本地**持久化（声音从哪台机器的音箱出，开关就属于哪台机器；Host 设置服务的客户端可见名单目前不对树外插件开放）。默认关闭——浏览器会拦截无用户激活的自动发声，显式点击开关即完成激活。
-- **云端 TTS（v2）**：host 侧路由 `/dsh-speech/tts` 代理合成请求，API key 只存在于 host 进程环境变量，浏览器永远接触不到。同文本命中内存缓存，重复点击不重复计费。
-- **自动回退**：未配置云端引擎、key 无效、网络失败或文本超长时，自动退回系统音色（`speechSynthesis`）继续播报。
+- **自动播报开关**：会话头部工具区的喇叭按钮，开启后图标变绿色高亮。开启后，新落定的助手消息自动朗读；历史消息（包括翻页加载的更早消息）不播。默认关闭——浏览器会拦截无用户激活的自动发声，显式点击开关即完成激活。
+- **云端 TTS**：合成在 host 侧代理，API key 只存在于 host 进程环境变量，浏览器永远接触不到。同文本命中内存缓存，重复点击不重复计费。
+- **自动回退**：未配置云端引擎、key 无效、网络失败或文本超长时，自动退回系统音色（`speechSynthesis`）继续播报，并在浏览器控制台说明原因。
 - **特性检测**：非浏览器环境（jsdom、node e2e）没有 `window`/`Audio` 时插件静默不注册，不报错。
+
+## 工作原理
+
+一个包、两个半面（dsh 的双面插件模式）：
+
+```text
+浏览器半（lib/client.js，由外壳模块表加载）
+  🔊 按钮 / 自动播报开关  →  每会话 SpeechController
+                                   │  POST /dsh-speech/tts {text}
+                                   ▼
+host 半（lib/index.js，由 Loader 挂载）
+  NDJSON 流式路由 → 引擎解析 → 按句分段（首段 ≤80 字）
+                                   │
+                 ┌─────────────────┴─────────────────┐
+                 ▼                                   ▼
+          阿里百炼（REST）                     火山豆包（V3 单向流式 HTTP）
+                 └──────── 分段音频逐段回推 ────────┘
+                                   │
+           浏览器收到第一段即开speak，其余分段在播放期间陆续到达
+```
+
+- **流式播放**：host 边合成边以 NDJSON 推送分段；首段刻意切小（≤80 字，实测约 1~2 秒出声，其余分段 280 字/段在播放期间合成）。重复点击同一条消息命中缓存，即时回放。
+- **回退顺序**：云端失败（key 缺失/无效、网络、超长）→ 系统音色整条播报；**不会**在两家云端引擎之间自动切换（音色突变比回退更糟），引擎由配置决定。
+- **自动播报的偏好是浏览器本地存储**：声音从哪台机器的音箱出，开关就属于哪台浏览器（host 设置服务的客户端可见名单目前不对树外插件开放，本地存储也是语义上更正确的归属）。
 
 ## 云端 TTS 配置
 
@@ -16,20 +40,25 @@ DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落�
 
 | engine | 行为 |
 |---|---|
-| `auto`（默认） | 有 `DASHSCOPE_API_KEY` 用百炼；否则有火山凭据用火山；否则系统音色 |
-| `dashscope` | 强制百炼（缺 key 启动日志提示，路由 503 → 浏览器回退） |
+| `auto`（默认） | 有百炼 key 用百炼；否则有火山 key 用火山；否则系统音色 |
+| `dashscope` | 强制百炼（缺 key 时路由 503 → 浏览器回退系统音色） |
 | `volcengine` | 强制火山豆包语音 |
 | `system` | 永远用浏览器系统音色 |
 
-环境变量（放 harness 仓库根目录 `.env`，和 `DEEPSEEK_API_KEY` 同一处）：
+环境变量（源码运行放 harness 仓库根目录 `.env`，和 `DEEPSEEK_API_KEY` 同一处；全局安装则放启动 dsh 的 shell 环境）：
 
 ```sh
 # 专属名优先（推荐：显式声明这个 key 是给本插件的，可单独建限额 key）；
-# 未设置专属名时回退到官方通用名（复用已有配置）。
+# 未设置专属名时回退官方通用名（复用已有配置）。
 DSH_SPEECH_DASHSCOPE_API_KEY=sk-...         # 或回退 DASHSCOPE_API_KEY
 DSH_SPEECH_VOLCENGINE_API_KEY=...           # 或回退 VOLCENGINE_TTS_API_KEY
                                             #   （更早的旧名 VOLCENGINE_TTS_ACCESS_TOKEN 仍识别）
 ```
+
+凭据获取：
+
+- **阿里百炼**：[百炼控制台](https://bailian.console.aliyun.com) → API-KEY（`sk-` 开头）。注意账户欠费（Arrearage）会拒一切调用，控制台提示见[错误码文档](https://help.aliyun.com/zh/model-studio/error-code)。
+- **火山豆包**：[语音控制台](https://console.volcengine.com/speech/app) → 开通「语音合成大模型 2.0」→ **API Key 管理**创建 API Key（注意：不是应用级的 Access Token——V3 接口只认 API Key）。
 
 可选配置：在 profile 的 `cordis.patch.yml`（`~/.dsh/profiles/web/cordis.patch.yml`）里覆盖插件行——
 
@@ -45,17 +74,19 @@ DSH_SPEECH_VOLCENGINE_API_KEY=...           # 或回退 VOLCENGINE_TTS_API_KEY
     cacheEntries: 64              # 合成结果内存缓存条数
 ```
 
-火山走 **V3 单向流式 HTTP 接口**（`/api/v3/tts/unidirectional`），`volcengineResourceId` 必须匹配你在控制台开通的服务版本——开通的是「语音合成大模型 2.0」就填 `seed-tts-2.0`（resource id 与音色版本不匹配会报 55000000）。计费与音色列表见官方文档：[百炼语音合成](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、[火山豆包语音](https://www.volcengine.com/docs/6561/1257584)。长消息自动按句切成引擎限额内的分段顺序合成播放。
+计费与音色列表见官方文档：[百炼语音合成](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、[火山豆包语音](https://www.volcengine.com/docs/6561/1598757)。
 
-## 安装（针对源码运行的 fork）
+## 安装
+
+### 源码运行的 fork（开发场景）
 
 ```sh
 # 一次性：构建插件
-cd ~/code/dsh-speech-plugin && pnpm install && pnpm run build
+cd dsh-speech-plugin && pnpm install && pnpm run build
 
 # 装进 web profile（首次会自动初始化 ~/.dsh/profiles/web）
-cd ~/code/open/fork/deepseek-harness
-pnpm dsh plugin --profile web add /Users/huangdj/code/dsh-speech-plugin
+cd <你的 deepseek-harness 目录>
+pnpm dsh plugin --profile web add /绝对路径/dsh-speech-plugin
 
 # 验证组合层（应看到 "# == dsh-speech-plugin" 层）
 pnpm dsh --profile web --dump-config | grep -A2 dsh-speech-plugin
@@ -64,29 +95,58 @@ pnpm dsh --profile web --dump-config | grep -A2 dsh-speech-plugin
 pnpm dsh --profile web     # http://127.0.0.1:3080
 ```
 
-对话需要在 fork 根目录 `.env` 里配置 `DEEPSEEK_API_KEY`。
+对话本身需要 `DEEPSEEK_API_KEY`（fork 根目录 `.env`）。
+
+### 全局安装的 dsh
+
+```sh
+npm i -g @deepseek-ai/dsh
+dsh plugin --profile web add /绝对路径/dsh-speech-plugin
+dsh --profile web
+```
+
+### 分发给别人
+
+- **npm 发布（推荐）**：`pnpm run build && pnpm publish`（`files` 字段已列好构建产物），用户一句 `dsh plugin --profile web add dsh-speech-plugin` 即装即用。
+- **GitHub 直装有构建陷阱**：git 安装拉到的是源码且 `lib/` 不入库，需要包内自足的 `prepare` 脚本，且 pnpm ≥10 要求用户在 profile 的 `pnpm-workspace.yaml` 里 `allowBuilds` 放行——除非专门做了适配，否则走 npm。
+- 记得给仓库加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现（`gh repo edit --add-topic dsh-plugin`）。
 
 ## 卸载
 
 ```sh
-pnpm dsh plugin --profile web remove dsh-speech-plugin
+dsh plugin --profile web remove dsh-speech-plugin   # 源码运行前缀 pnpm dsh
 ```
 
 ## 开发循环
 
-改代码后 `pnpm run build`（pnpm link 不跑构建脚本），浏览器刷新即可——模块注册表按内容 hash 生成 rev，改动自动生效。`pnpm run typecheck` 做类型检查。
+改代码后 `pnpm run build`（pnpm link 不跑构建脚本），浏览器刷新即可——模块注册表按内容 hash 生成 rev，改动自动生效。`pnpm run typecheck` 做类型检查。host 半的改动需要重启 dsh。
+
+## 故障排查
+
+浏览器 DevTools 控制台里 `[dsh-speech]` 开头的警告会带具体原因（括号内）；服务端日志 `dsh-speech:` 前缀同理。
+
+| 现象/警告 | 原因与处理 |
+|---|---|
+| `tts-unavailable` | 没有任何云端凭据，或 `engine: system`。配置 env 后重启 |
+| `dashscope ... Arrearage` | 百炼账户欠费。费用中心结清，或换火山的 key |
+| `load grant not found in SaaS storage` | 凭据类型与接口不匹配：V3 只认**控制台 API Key**（`X-Api-Key`），应用级 Access Token 不行；或该 key 没有绑定语音合成服务授权 |
+| `55000000 resource ID is mismatched with speaker` | `volcengineResourceId` 与音色版本不匹配：2.0 授权配 2.0 音色（如 `zh_female_vv_uranus_bigtts`），公版音色配 `volc.service_type.10029` |
+| `text-too-long` | 清洗后的文本超过 `maxTextLength`（默认 8000 字），已回退系统音色；确需更长可调大该值（成本自负） |
+| 点击后 1~2 秒才出声 | 正常：这是云端神经合成的推理延迟，已是流式首段（≤80 字）优先的极限；缓存命中则即时 |
+| 界面没有 🔊 按钮 | 该消息是中断产生的残句（无 messageId），或环境无 `Audio`；刷新页面确认插件行在 `--dump-config` 里 |
+| 启动报 `EADDRINUSE :3080` | 旧实例占着端口：`lsof -ti :3080 | xargs kill` |
 
 ## 结构
 
 ```
 src/config.ts            插件 Config schema（引擎/模型/音色/上限/缓存）+ 默认值
 src/index.ts             host 半：/dsh-speech/tts 流式路由
-src/tts/types.ts         provider 契约（分段合成、媒体类型、限额）
+src/tts/types.ts         provider 契约（分段合成、错误分类、限额）
 src/tts/dashscope.ts     阿里百炼 provider（REST，Bearer key，Base64 wav）
-src/tts/volcengine.ts    火山豆包 provider（V3 单向流式 HTTP，App-Id/Access-Key/Resource-Id 头）
-src/tts/split-text.ts    按句切分成引擎限额内的分段
-src/tts/service.ts       引擎解析（auto 优先级）+ 顺序合成 + LRU 缓存
-src/client/controller.ts 每会话控制器：云端分段播放，失败回退 speechSynthesis
+src/tts/volcengine.ts    火山豆包 provider（V3 单向流式，X-Api-Key + Resource-Id，NDJSON Base64 mp3）
+src/tts/split-text.ts    按句分段；首段小预算换取最快首响
+src/tts/service.ts       引擎解析（auto 优先级）+ 分段重试 + LRU 缓存
+src/client/controller.ts 每会话控制器：NDJSON 流式播放，失败回退 speechSynthesis
 src/client/announce-store.ts  自动播报偏好（浏览器本地持久化 store）
 src/client/clean-text.ts markdown/代码块剥离，只留可读文本
 src/client/speech-watcher.ts  自动播报：订阅会话快照，水位线区分新旧消息
@@ -99,8 +159,12 @@ src/client/index.ts      插槽注册（assistant-actions + header.utilities）
 
 ## 已知限制与后续
 
-- 播放是流式的：host 边合成边以 NDJSON 推送分段，浏览器收到第一段（≤80 字小段，实测约 1~2 秒）即开始播放，其余分段在播放期间陆续到达；重复点击同一条消息命中缓存，即时回放。
-- 火山凭据是控制台 API Key（`X-Api-Key`）；resource id 与开通版本、音色版本三者要匹配（2.0 音色 + seed-tts-2.0）。
-- 引擎/音色是部署级配置（cordis.yml），浏览器内切换音色 UI 未做。
-- 自动播报按「新落定」触发：订阅建立时已在场的消息不播（水位线机制，防止回放历史）。切换会话期间，仍在生成的旧会话消息完成时也会播报。
+- 引擎/音色是部署级配置（cordis.yml），浏览器内切换音色的 UI 未做。
+- 自动播报按「新落定」触发（水位线机制，防止回放历史）；切换会话期间，仍在生成的旧会话消息完成时也会播报。开关状态按浏览器存储，换设备/浏览器需各自开启。
+- 首句超过 80 字时首段优化失效（整句按引擎上限硬切）；语速/音量偏好未暴露。
+- 火山走 V3 单向流式接口；更低延迟的双向流式（边生成边合成）需要接会话事件流，属于后续方向。
 - 回退的系统音色质量取决于操作系统；macOS 可在 系统设置 → 辅助功能 → 朗读内容 下载增强版中文音色。
+
+## License
+
+MIT
