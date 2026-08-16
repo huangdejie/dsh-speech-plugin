@@ -12,11 +12,17 @@ DeepSeek Harness 的语音插件：为每条助手消息提供「播报」、会
 
 ## 快速开始
 
-**① 安装**（任选）：
+**① 安装**（任选其一）：
 
 ```sh
-dsh plugin --profile web add dsh-speech-plugin             # 从 npm 安装
-dsh plugin --profile web add /绝对路径/dsh-speech-plugin    # 从本地目录安装
+# 从 npm 安装：构建产物已在包内，装完即用
+dsh plugin --profile web add dsh-speech-plugin
+
+# 从本地目录安装：源码仓库须先构建
+git clone https://github.com/huangdejie/dsh-speech-plugin
+cd dsh-speech-plugin && pnpm install && pnpm run build
+cd <你的 deepseek-harness 目录>
+dsh plugin --profile web add /绝对路径/dsh-speech-plugin
 ```
 
 **② 取一个云端 key**（二选一，见下方「凭据获取」）：

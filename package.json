@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "description": "Speech plugin for DeepSeek Harness: per-message speak button, composer voice input, and auto-announce toggle, over cloud TTS/ASR with Web Speech API fallback",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/huangdejie/dsh-speech-plugin.git"
+  },
+  "bugs": "https://github.com/huangdejie/dsh-speech-plugin/issues",
+  "homepage": "https://github.com/huangdejie/dsh-speech-plugin#readme",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
