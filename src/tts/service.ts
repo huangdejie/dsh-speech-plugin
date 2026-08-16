@@ -87,7 +87,7 @@ export class SpeechTTSService {
         if (credentials !== undefined) {
           return {
             provider: volcengineProvider(
-              { model: this.config.volcengineModel, voice: this.config.volcengineVoice },
+              { model: this.config.volcengineResourceId, voice: this.config.volcengineVoice },
               credentials.appId,
               credentials.accessToken,
             ),

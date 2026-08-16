@@ -1,22 +1,30 @@
 /**
- * Volcengine (Doubao) TTS provider over the V1 non-streaming HTTP endpoint:
- * one POST per chunk, `Bearer;<token>` authorization, Base64 MP3 in the JSON
- * response. The V1 shape is marked legacy in favor of the V3 SSE API, but it
- * is the simplest request/response contract and fits non-streaming playback.
+ * Volcengine (Doubao) TTS provider over the V3 unidirectional HTTP endpoint:
+ * one POST per chunk, `X-Api-App-Id`/`X-Api-Access-Key`/`X-Api-Resource-Id`
+ * headers, and a newline-delimited JSON stream whose `data` fields carry
+ * Base64 MP3 until the `20000000` completion block. The resource id selects
+ * the model version (`seed-tts-2.0` for 语音合成大模型 2.0, the service the
+ * console opens today — the legacy V1 API cannot see that authorization).
  */
-import { randomUUID } from 'node:crypto'
 import { TtsError, type TtsProvider, type TtsProviderConfig, type TtsSegment } from './types.ts'
 
-const ENDPOINT = 'https://openspeech.bytedance.com/api/v1/tts'
+const ENDPOINT = 'https://openspeech.bytedance.com/api/v3/tts/unidirectional'
 
-/** 1024 UTF-8 bytes per request; 280 chars stay under it even in pure CJK. */
+/** V3 request text budget; kept conservative for CJK-heavy text. */
 const MAX_CHARS = 280
 
 /** One chunk synthesis budget; timeouts are transient by nature. */
 const REQUEST_TIMEOUT_MS = 30_000
 
-/** Volcengine codes an identical retry can clear: concurrency cap and busy backend. */
-const RETRYABLE_CODES = new Set([3003, 3005])
+/** Stream completion code carried by the final JSON block. */
+const COMPLETION_CODE = 20000000
+
+/** One JSON block of the response stream. */
+interface VolcengineBlock {
+  readonly code?: number
+  readonly message?: string
+  readonly data?: string | null
+}
 
 /** Run one fetch, classifying network and timeout throws as retryable. */
 async function fetchOrRetryable(url: string, init: RequestInit): Promise<Response> {
@@ -30,17 +38,11 @@ async function fetchOrRetryable(url: string, init: RequestInit): Promise<Respons
   }
 }
 
-/** V1 response payload shape (only the fields read). */
-interface VolcenginePayload {
-  readonly code?: number
-  readonly message?: string
-  readonly data?: string
-}
-
-/** Build the Volcengine provider.
- * @param config - voice/model settings (model may be the empty service default).
+/**
+ * Build the Volcengine V3 provider.
+ * @param config - voice settings plus the resource id selecting the model.
  * @param appId - console application id.
- * @param accessToken - VOLCENGINE_TTS_ACCESS_TOKEN credential.
+ * @param accessToken - console access token.
  */
 export function volcengineProvider(
   config: TtsProviderConfig,
@@ -56,33 +58,59 @@ export function volcengineProvider(
       const response = await fetchOrRetryable(ENDPOINT, {
         method: 'POST',
         headers: {
-          // The V1 wire format separates the scheme and token with a semicolon.
-          authorization: `Bearer;${accessToken}`,
+          'X-Api-App-Id': appId,
+          'X-Api-Access-Key': accessToken,
+          'X-Api-Resource-Id': config.model,
           'content-type': 'application/json',
         },
         body: JSON.stringify({
-          app: { appid: appId, token: 'dsh-speech-plugin', cluster: 'volcano_tts' },
           user: { uid: 'dsh-speech-plugin' },
-          audio: { voice_type: config.voice, encoding: 'mp3' },
-          request: {
-            reqid: randomUUID(),
+          req_params: {
             text,
-            operation: 'query',
-            ...(config.model === '' ? {} : { model: config.model }),
+            speaker: config.voice,
+            audio_params: { format: 'mp3', sample_rate: 24000, speech_rate: 0 },
           },
         }),
       })
-      const payload = await response.json() as VolcenginePayload
-      if (!response.ok || payload.code !== 3000) {
+      if (!response.ok) {
+        const body = await response.text()
+        let message = body.slice(0, 200)
+        try {
+          message = (JSON.parse(body) as VolcengineBlock).message ?? message
+        } catch {
+          // Non-JSON error body keeps its truncated text form.
+        }
         throw new TtsError(
-          `volcengine tts failed (${String(payload.code ?? response.status)}): ${payload.message ?? ''}`.trim(),
-          RETRYABLE_CODES.has(payload.code ?? 0),
+          `volcengine tts failed (${response.status}): ${message}`,
+          response.status >= 500 || response.status === 429,
         )
       }
-      if (payload.data === undefined || payload.data === '') {
+      const parts: string[] = []
+      for (const line of (await response.text()).split('\n')) {
+        const trimmed = line.trim()
+        if (trimmed === '') continue
+        let block: VolcengineBlock
+        try {
+          block = JSON.parse(trimmed) as VolcengineBlock
+        } catch {
+          throw new TtsError(`volcengine tts stream carried a malformed block: ${trimmed.slice(0, 120)}`, false)
+        }
+        if (block.code === 0) {
+          if (typeof block.data === 'string' && block.data !== '') parts.push(block.data)
+          continue
+        }
+        if (block.code === COMPLETION_CODE) break
+        throw new TtsError(
+          `volcengine tts failed (${String(block.code ?? 'unknown')}): ${block.message ?? ''}`.trim(),
+          false,
+        )
+      }
+      if (parts.length === 0) {
         throw new TtsError('volcengine tts response carried no audio', false)
       }
-      return { base64: payload.data, contentType: 'audio/mpeg' }
+      // One part per request: the browser plays parts sequentially, so a
+      // single concatenated MP3 keeps chunk and part boundaries aligned.
+      return { base64: parts.join(''), contentType: 'audio/mpeg' }
     },
   }
 }

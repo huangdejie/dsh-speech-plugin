@@ -34,16 +34,16 @@ VOLCENGINE_TTS_APP_ID=...                   # 火山 app id（也可用 config �
 ```yaml
 - id: ui-speech
   config:
-    engine: volcengine          # auto | system | dashscope | volcengine
+    engine: volcengine            # auto | system | dashscope | volcengine
     dashscopeModel: qwen3-tts-flash
     dashscopeVoice: Cherry
-    volcengineVoice: zh_male_M392_conversation_wvae_bigtts
-    volcengineModel: ''         # 留空用服务端默认；如 seed-tts-1.1
-    maxTextLength: 2000         # 单条消息合成字符上限（成本闸门，超出回退系统音色）
-    cacheEntries: 64            # 合成结果内存缓存条数
+    volcengineVoice: zh_female_cancan_mars_bigtts   # 音色代号见控制台音色列表
+    volcengineResourceId: seed-tts-2.0  # 必须与开通的服务版本一致（2.0 = seed-tts-2.0）
+    maxTextLength: 8000           # 单条消息合成字符上限（成本闸门，超出回退系统音色）
+    cacheEntries: 64              # 合成结果内存缓存条数
 ```
 
-计费与音色列表见官方文档：[百炼语音合成](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、[火山豆包语音 V1 接口](https://www.volcengine.com/docs/6561/1257584)。长消息自动按句切成引擎限额内的分段顺序合成播放。
+火山走 **V3 单向流式 HTTP 接口**（`/api/v3/tts/unidirectional`），`volcengineResourceId` 必须匹配你在控制台开通的服务版本——开通的是「语音合成大模型 2.0」就填 `seed-tts-2.0`（resource id 与音色版本不匹配会报 55000000）。计费与音色列表见官方文档：[百炼语音合成](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、[火山豆包语音](https://www.volcengine.com/docs/6561/1257584)。长消息自动按句切成引擎限额内的分段顺序合成播放。
 
 ## 安装（针对源码运行的 fork）
 
@@ -82,7 +82,7 @@ src/speech-settings.ts   共享设置 schema（announce: 'off' | 'on'，默认 o
 src/index.ts             host 半：设置 namespace + /dsh-speech/tts 路由
 src/tts/types.ts         provider 契约（分段合成、媒体类型、限额）
 src/tts/dashscope.ts     阿里百炼 provider（REST，Bearer key，Base64 wav）
-src/tts/volcengine.ts    火山豆包 provider（V1 REST，Bearer;<token>，Base64 mp3）
+src/tts/volcengine.ts    火山豆包 provider（V3 单向流式 HTTP，App-Id/Access-Key/Resource-Id 头）
 src/tts/split-text.ts    按句切分成引擎限额内的分段
 src/tts/service.ts       引擎解析（auto 优先级）+ 顺序合成 + LRU 缓存
 src/client/controller.ts 每会话控制器：云端分段播放，失败回退 speechSynthesis
@@ -98,7 +98,7 @@ src/client/index.ts      插槽注册（assistant-actions + header.utilities）
 ## 已知限制与后续
 
 - 云端合成为「整段完成后开speak」：长消息首响延迟 = 全部分段合成完。流式打字机播报（首句先响）是规划的 v3。
-- 火山走 V1 非流式接口（官方标注推荐 V3 SSE）；如需更低延迟可升级，provider 接口不变。
+- 火山凭据是应用级 App ID + Access Token；resource id 与开通版本、音色版本三者要匹配（2.0 音色 + seed-tts-2.0）。
 - 引擎/音色是部署级配置（cordis.yml），浏览器内切换音色 UI 未做。
 - 自动播报按「新落定」触发：订阅建立时已在场的消息不播（水位线机制，防止回放历史）。切换会话期间，仍在生成的旧会话消息完成时也会播报。
 - 回退的系统音色质量取决于操作系统；macOS 可在 系统设置 → 辅助功能 → 朗读内容 下载增强版中文音色。

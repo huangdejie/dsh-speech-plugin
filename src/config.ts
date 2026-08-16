@@ -21,10 +21,10 @@ export interface SpeechPluginConfig {
   dashscopeVoice: string
   /** Volcengine (Doubao) application id from the console. */
   volcengineAppId: string
-  /** Volcengine voice_type name. */
+  /** Volcengine (Doubao) voice/speaker name. */
   volcengineVoice: string
-  /** Volcengine model version; empty uses the service default. */
-  volcengineModel: string
+  /** Volcengine V3 resource id selecting the model version (seed-tts-2.0, ...). */
+  volcengineResourceId: string
   /** Hard cap on synthesized characters per request (cost guard). */
   maxTextLength: number
   /** Cached synthesis responses kept in memory. */
@@ -37,8 +37,8 @@ export const Config: z<SpeechPluginConfig> = z.object({
   dashscopeModel: z.string().default('qwen3-tts-flash'),
   dashscopeVoice: z.string().default('Cherry'),
   volcengineAppId: z.string().default(''),
-  volcengineVoice: z.string().default('zh_male_M392_conversation_wvae_bigtts'),
-  volcengineModel: z.string().default(''),
+  volcengineVoice: z.string().default('zh_female_cancan_mars_bigtts'),
+  volcengineResourceId: z.string().default('seed-tts-2.0'),
   maxTextLength: z.natural().default(8000),
   cacheEntries: z.natural().default(64),
 })
@@ -52,8 +52,8 @@ export const DEFAULT_CONFIG: SpeechPluginConfig = {
   dashscopeModel: 'qwen3-tts-flash',
   dashscopeVoice: 'Cherry',
   volcengineAppId: '',
-  volcengineVoice: 'zh_male_M392_conversation_wvae_bigtts',
-  volcengineModel: '',
+  volcengineVoice: 'zh_female_cancan_mars_bigtts',
+  volcengineResourceId: 'seed-tts-2.0',
   maxTextLength: 8000,
   cacheEntries: 64,
 }
