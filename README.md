@@ -24,9 +24,11 @@ DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落�
 环境变量（放 harness 仓库根目录 `.env`，和 `DEEPSEEK_API_KEY` 同一处）：
 
 ```sh
-DASHSCOPE_API_KEY=sk-...                    # 阿里百炼 API key
-VOLCENGINE_TTS_API_KEY=...                  # 火山控制台 API Key（API Key 管理页创建；
-                                            #   旧名 VOLCENGINE_TTS_ACCESS_TOKEN 仍被识别）
+# 专属名优先（推荐：显式声明这个 key 是给本插件的，可单独建限额 key）；
+# 未设置专属名时回退到官方通用名（复用已有配置）。
+DSH_SPEECH_DASHSCOPE_API_KEY=sk-...         # 或回退 DASHSCOPE_API_KEY
+DSH_SPEECH_VOLCENGINE_API_KEY=...           # 或回退 VOLCENGINE_TTS_API_KEY
+                                            #   （更早的旧名 VOLCENGINE_TTS_ACCESS_TOKEN 仍识别）
 ```
 
 可选配置：在 profile 的 `cordis.patch.yml`（`~/.dsh/profiles/web/cordis.patch.yml`）里覆盖插件行——

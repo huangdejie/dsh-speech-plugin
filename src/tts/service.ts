@@ -27,10 +27,22 @@ const delay = (ms: number): Promise<void> => new Promise(resolve => { setTimeout
 /** No cloud engine is usable; the browser falls back to system voices. */
 export class UnavailableError extends Error {}
 
+/** Resolve the first present, non-empty environment variable. */
+function firstEnv(names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = process.env[name]
+    if (value !== undefined && value !== '') return value
+  }
+  return undefined
+}
+
 /** Resolve the Volcengine console API Key from the environment. */
 function volcengineApiKey(): string | undefined {
-  const apiKey = process.env.VOLCENGINE_TTS_API_KEY ?? process.env.VOLCENGINE_TTS_ACCESS_TOKEN
-  return apiKey !== undefined && apiKey !== '' ? apiKey : undefined
+  return firstEnv([
+    'DSH_SPEECH_VOLCENGINE_API_KEY',
+    'VOLCENGINE_TTS_API_KEY',
+    'VOLCENGINE_TTS_ACCESS_TOKEN',
+  ])
 }
 
 /**
@@ -56,8 +68,8 @@ export class SpeechTTSService {
         : [this.config.engine]
     for (const engine of want) {
       if (engine === 'dashscope') {
-        const apiKey = process.env.DASHSCOPE_API_KEY
-        if (apiKey !== undefined && apiKey !== '') {
+        const apiKey = firstEnv(['DSH_SPEECH_DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'])
+        if (apiKey !== undefined) {
           return {
             provider: dashscopeProvider(
               { model: this.config.dashscopeModel, voice: this.config.dashscopeVoice },
