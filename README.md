@@ -25,8 +25,8 @@ DeepSeek Harness 的树外语音播报插件：在 Web 对话界面为每条落�
 
 ```sh
 DASHSCOPE_API_KEY=sk-...                    # 阿里百炼 API key
-VOLCENGINE_TTS_ACCESS_TOKEN=...             # 火山引擎 access token
-VOLCENGINE_TTS_APP_ID=...                   # 火山 app id（也可用 config 的 volcengineAppId）
+VOLCENGINE_TTS_API_KEY=...                  # 火山控制台 API Key（API Key 管理页创建；
+                                            #   旧名 VOLCENGINE_TTS_ACCESS_TOKEN 仍被识别）
 ```
 
 可选配置：在 profile 的 `cordis.patch.yml`（`~/.dsh/profiles/web/cordis.patch.yml`）里覆盖插件行——
@@ -37,7 +37,7 @@ VOLCENGINE_TTS_APP_ID=...                   # 火山 app id（也可用 config �
     engine: volcengine            # auto | system | dashscope | volcengine
     dashscopeModel: qwen3-tts-flash
     dashscopeVoice: Cherry
-    volcengineVoice: zh_female_cancan_mars_bigtts   # 音色代号见控制台音色列表
+    volcengineVoice: zh_female_vv_uranus_bigtts   # 必须 2.0 系音色；公版音色会报 55000000
     volcengineResourceId: seed-tts-2.0  # 必须与开通的服务版本一致（2.0 = seed-tts-2.0）
     maxTextLength: 8000           # 单条消息合成字符上限（成本闸门，超出回退系统音色）
     cacheEntries: 64              # 合成结果内存缓存条数

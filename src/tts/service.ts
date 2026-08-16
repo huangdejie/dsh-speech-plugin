@@ -30,21 +30,10 @@ export interface EngineUnavailable {
 /** Whole-message synthesis result, or the unavailable marker. */
 export type SynthesisResult = TtsResponse | EngineUnavailable
 
-/** Volcengine credentials resolved from environment plus config. */
-interface VolcengineCredentials {
-  readonly appId: string
-  readonly accessToken: string
-}
-
-function volcengineCredentials(config: SpeechPluginConfig): VolcengineCredentials | undefined {
-  const accessToken = process.env.VOLCENGINE_TTS_ACCESS_TOKEN
-  const appId = config.volcengineAppId !== ''
-    ? config.volcengineAppId
-    : process.env.VOLCENGINE_TTS_APP_ID
-  if (accessToken === undefined || accessToken === '' || appId === undefined || appId === '') {
-    return undefined
-  }
-  return { appId, accessToken }
+/** Resolve the Volcengine console API Key from the environment. */
+function volcengineApiKey(): string | undefined {
+  const apiKey = process.env.VOLCENGINE_TTS_API_KEY ?? process.env.VOLCENGINE_TTS_ACCESS_TOKEN
+  return apiKey !== undefined && apiKey !== '' ? apiKey : undefined
 }
 
 /**
@@ -83,20 +72,18 @@ export class SpeechTTSService {
           return { reason: 'engine is dashscope but DASHSCOPE_API_KEY is not set' }
         }
       } else {
-        const credentials = volcengineCredentials(this.config)
-        if (credentials !== undefined) {
+        const apiKey = volcengineApiKey()
+        if (apiKey !== undefined) {
           return {
             provider: volcengineProvider(
               { model: this.config.volcengineResourceId, voice: this.config.volcengineVoice },
-              credentials.appId,
-              credentials.accessToken,
+              apiKey,
             ),
           }
         }
         if (this.config.engine === 'volcengine') {
           return {
-            reason: 'engine is volcengine but VOLCENGINE_TTS_ACCESS_TOKEN'
-              + ' and an app id are not set',
+            reason: 'engine is volcengine but VOLCENGINE_TTS_API_KEY is not set',
           }
         }
       }

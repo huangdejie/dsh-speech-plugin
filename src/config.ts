@@ -19,9 +19,7 @@ export interface SpeechPluginConfig {
   dashscopeModel: string
   /** DashScope voice name. */
   dashscopeVoice: string
-  /** Volcengine (Doubao) application id from the console. */
-  volcengineAppId: string
-  /** Volcengine (Doubao) voice/speaker name. */
+  /** Volcengine (Doubao) voice/speaker name (must match the granted resource). */
   volcengineVoice: string
   /** Volcengine V3 resource id selecting the model version (seed-tts-2.0, ...). */
   volcengineResourceId: string
@@ -36,8 +34,7 @@ export const Config: z<SpeechPluginConfig> = z.object({
   engine: z.union([...SPEECH_ENGINES]).default('auto'),
   dashscopeModel: z.string().default('qwen3-tts-flash'),
   dashscopeVoice: z.string().default('Cherry'),
-  volcengineAppId: z.string().default(''),
-  volcengineVoice: z.string().default('zh_female_cancan_mars_bigtts'),
+  volcengineVoice: z.string().default('zh_female_vv_uranus_bigtts'),
   volcengineResourceId: z.string().default('seed-tts-2.0'),
   maxTextLength: z.natural().default(8000),
   cacheEntries: z.natural().default(64),
@@ -51,8 +48,7 @@ export const DEFAULT_CONFIG: SpeechPluginConfig = {
   engine: 'auto',
   dashscopeModel: 'qwen3-tts-flash',
   dashscopeVoice: 'Cherry',
-  volcengineAppId: '',
-  volcengineVoice: 'zh_female_cancan_mars_bigtts',
+  volcengineVoice: 'zh_female_vv_uranus_bigtts',
   volcengineResourceId: 'seed-tts-2.0',
   maxTextLength: 8000,
   cacheEntries: 64,
