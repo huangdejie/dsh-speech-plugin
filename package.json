@@ -1,6 +1,20 @@
 {
   "name": "dsh-speech-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "keywords": [
+    "dsh",
+    "deepseek",
+    "deepseek-harness",
+    "speech",
+    "voice",
+    "voice-input",
+    "tts",
+    "asr",
+    "speech-recognition",
+    "dashscope",
+    "volcengine",
+    "plugin"
+  ],
   "description": "Speech plugin for DeepSeek Harness: per-message speak button, composer voice input, and auto-announce toggle, over cloud TTS/ASR with Web Speech API fallback",
   "license": "MIT",
   "repository": {

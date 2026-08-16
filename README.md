@@ -1,5 +1,8 @@
 # dsh-speech-plugin
 
+[![npm version](https://img.shields.io/npm/v/dsh-speech-plugin)](https://www.npmjs.com/package/dsh-speech-plugin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 DeepSeek Harness 的语音插件：为每条助手消息提供「播报」、会话级「自动播报」开关，以及输入框的「语音输入」麦克风。云端 TTS/ASR 支持阿里百炼与火山豆包，播报与输入可各选一家；云端不可用时播报自动回退浏览器系统音色。以独立插件安装，不修改 harness 仓库任何源代码。
 
 ## 功能
