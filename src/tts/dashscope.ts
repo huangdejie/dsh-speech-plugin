@@ -42,7 +42,7 @@ interface DashScopePayload {
 
 /** Build the DashScope provider.
  * @param config - model and voice settings.
- * @param apiKey - DASHSCOPE_API_KEY credential.
+ * @param apiKey - SPEECH_DASHSCOPE_API_KEY credential.
  */
 export function dashscopeProvider(
   config: TtsProviderConfig,

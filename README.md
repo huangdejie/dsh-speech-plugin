@@ -46,15 +46,14 @@ host 半（lib/index.js，由 Loader 挂载）
 | `volcengine` | 强制火山豆包语音 |
 | `system` | 永远用浏览器系统音色 |
 
-环境变量（源码运行放 harness 仓库根目录 `.env`，和 `DEEPSEEK_API_KEY` 同一处；全局安装则放启动 dsh 的 shell 环境）：
+环境变量（源码运行放 harness 仓库根目录 `.env`，和 `DEEPSEEK_API_KEY` 同一处；全局安装放 `~/.dsh/.env` 或启动 dsh 的 shell 环境）。**一个 key 同时覆盖该家的 TTS 与 ASR**，名字统一 `SPEECH_` 前缀、不含服务词：
 
 ```sh
-# 专属名优先（推荐：显式声明这个 key 是给本插件的，可单独建限额 key）；
-# 未设置专属名时回退官方通用名（复用已有配置）。
-DSH_SPEECH_DASHSCOPE_API_KEY=sk-...         # 或回退 DASHSCOPE_API_KEY
-DSH_SPEECH_VOLCENGINE_API_KEY=...           # 或回退 VOLCENGINE_TTS_API_KEY
-                                            #   （更早的旧名 VOLCENGINE_TTS_ACCESS_TOKEN 仍识别）
+SPEECH_DASHSCOPE_API_KEY=sk-...   # 阿里百炼：TTS + ASR
+SPEECH_VOLCENGINE_API_KEY=...     # 火山豆包：TTS + ASR
 ```
+
+只认这两个名字。专属名不要写成 `DSH_SPEECH_*`：harness 启动层把 `DSH_` 前缀保留为自举命名空间，`.env` 里出现任何 `DSH_*` 都会启动报错。早期版本识别的 `VOLCENGINE_TTS_API_KEY` / `VOLCENGINE_TTS_ACCESS_TOKEN` 及通用名回退（`DASHSCOPE_API_KEY` / `VOLCENGINE_API_KEY`）均已移除。
 
 凭据获取：
 
@@ -93,13 +92,7 @@ DSH_SPEECH_VOLCENGINE_API_KEY=...           # 或回退 VOLCENGINE_TTS_API_KEY
 
 组合自由：TTS 和 ASR 各自按 key 与配置解析——播报用阿里、输入用豆包（`engine: dashscope` + `asrEngine: volcengine`），或反过来，或都走同一家，只需配好对应凭据。
 
-环境变量（两家各自复用 TTS 的 key，一个账号 key 同时覆盖 TTS 与 ASR）：
-
-```sh
-DSH_SPEECH_DASHSCOPE_API_KEY=sk-...         # 或回退 DASHSCOPE_API_KEY（百炼）
-DSH_SPEECH_VOLCENGINE_API_KEY=...           # 或回退 VOLCENGINE_TTS_API_KEY
-                                            #   （更早的旧名 VOLCENGINE_TTS_ACCESS_TOKEN 仍识别）
-```
+环境变量（与 TTS 共用同一套，见上节：`SPEECH_DASHSCOPE_API_KEY` / `SPEECH_VOLCENGINE_API_KEY`，一个 key 同时覆盖该家 TTS 与 ASR）。
 
 凭据获取：
 
@@ -179,7 +172,7 @@ dsh plugin --profile web remove dsh-speech-plugin   # 源码运行前缀 pnpm ds
 | `55000000 resource ID is mismatched with speaker` | `volcengineResourceId` 与音色版本不匹配：2.0 授权配 2.0 音色（如 `zh_female_vv_uranus_bigtts`），公版音色配 `volc.service_type.10029` |
 | `text-too-long` | 清洗后的文本超过 `maxTextLength`（默认 8000 字），已回退系统音色；确需更长可调大该值（成本自负） |
 | `asr-start: asr handshake rejected (http 403)` | 火山 key 未被授权当前 `volcengineAsrResourceId`：控制台开通的是 1.0 时应配 `volc.bigasr.sauc.duration`（默认的 `volc.seedasr.*` 是 2.0，需控制台开通 2.0 后才能用），或去控制台给该 API Key 关联对应资源 |
-| `asr-start: asr handshake rejected (http 401/403)`（阿里） | `DASHSCOPE_API_KEY` 无效或账户欠费；换有效 key 后重启 dsh |
+| `asr-start: asr handshake rejected (http 401/403)`（阿里） | `SPEECH_DASHSCOPE_API_KEY` 无效或账户欠费；换有效 key 后重启 dsh |
 | 点击后 1~2 秒才出声 | 正常：这是云端神经合成的推理延迟，已是流式首段（≤80 字）优先的极限；缓存命中则即时 |
 | 播报遇到表情符号卡一下 | 表情已在清洗层剥除（不发声）；若旧版仍在卡，刷新浏览器加载新 client |
 | 没在播报但图标停在「播报中」 | 旧版走系统音色回退时，Chrome 可能不触发朗读结束事件导致状态搁浅；已加引擎空闲兜底自动复位，刷新浏览器即可恢复 |

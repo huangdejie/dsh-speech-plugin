@@ -52,7 +52,7 @@ function resolveAsrSession(
         return { session: new DashscopeAsrSession(apiKey, config.dashscopeAsrModel, emit, onDone) }
       }
       if (config.asrEngine === 'dashscope') {
-        return { reason: 'asrEngine is dashscope but no DashScope API Key is set' }
+        return { reason: 'asrEngine is dashscope but SPEECH_DASHSCOPE_API_KEY is not set' }
       }
     } else {
       const apiKey = volcengineApiKey()
@@ -60,14 +60,14 @@ function resolveAsrSession(
         return { session: new VolcengineAsrSession(apiKey, config.volcengineAsrResourceId, emit, onDone) }
       }
       if (config.asrEngine === 'volcengine') {
-        return { reason: 'asrEngine is volcengine but no Volcengine API Key is set' }
+        return { reason: 'asrEngine is volcengine but SPEECH_VOLCENGINE_API_KEY is not set' }
       }
     }
   }
   return {
     reason: config.asrEngine === 'off'
       ? 'asrEngine is off; voice input is disabled'
-      : 'no ASR credentials; set DASHSCOPE_API_KEY or a Volcengine API Key',
+      : 'no ASR credentials; set SPEECH_DASHSCOPE_API_KEY or SPEECH_VOLCENGINE_API_KEY',
   }
 }
 
