@@ -1,8 +1,8 @@
 /**
  * Speech plugin, browser half: the per-message speak button in the
- * assistant-message action strip and the auto-announce toggle in the session
- * header, over the Host cloud-TTS route (Web Speech API fallback) and a
- * browser-local announce preference.
+ * assistant-message action strip, the auto-announce toggle in the session
+ * header, and the composer voice-input button, over the Host cloud-TTS/ASR
+ * routes (Web Speech API fallback) and a browser-local announce preference.
  * @module dsh-speech-plugin/client
  */
 import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
@@ -14,10 +14,12 @@ import { SpeechController } from './controller.ts'
 import { watchSessionSpeech } from './speech-watcher.ts'
 import { SpeechActions } from './SpeechActions.tsx'
 import { AnnounceToggle } from './AnnounceToggle.tsx'
+import { MicButton } from './MicButton.tsx'
+import { MicRecorder } from './asr-client.ts'
 import { SPEECH_CSS } from './styles.ts'
 import { en, zh, type SpeechKey } from './locales.ts'
 import { createAnnounceStore } from './announce-store.ts'
-import type { AnnounceToggleInjected, SpeechInjected } from './slots.ts'
+import type { AnnounceToggleInjected, MicInjected, SpeechInjected } from './slots.ts'
 
 export type {
   AnnounceToggleInjected, AnnounceToggleProps, SpeechInjected, SpeechActionProps,
@@ -39,9 +41,10 @@ const NS = 'speech'
 /** Required services: the slot registry, session bindings, and the copy. */
 export const inject = ['slots', 'sessions', 'locale']
 
-/** Per-Session speech resources: one controller plus one auto-announce watcher. */
+/** Per-Session speech resources: one controller, one mic recorder, plus one auto-announce watcher. */
 interface SessionSpeech {
   readonly controller: SpeechController
+  readonly mic: MicRecorder
   readonly stopWatch: () => void
 }
 
@@ -74,6 +77,7 @@ export function apply(ctx: ClientContext): void {
     let resources = sessions.get(sessionId)
     if (resources === undefined) {
       const controller = new SpeechController()
+      const mic = new MicRecorder()
       const session = ctx.sessions.binding(sessionId)?.session
       const stopWatch = session === undefined
         ? () => {}
@@ -82,7 +86,7 @@ export function apply(ctx: ClientContext): void {
           announceEnabled,
           (messageId, text) => controller.toggle(messageId, text),
         )
-      resources = { controller, stopWatch }
+      resources = { controller, mic, stopWatch }
       sessions.set(sessionId, resources)
     }
     return resources
@@ -91,9 +95,10 @@ export function apply(ctx: ClientContext): void {
   // Registered before the slot contributions so fiber unwind disposes the
   // controllers after both entries are withdrawn.
   ctx.effect(() => () => {
-    for (const { controller, stopWatch } of sessions.values()) {
+    for (const { controller, mic, stopWatch } of sessions.values()) {
       stopWatch()
       controller.dispose()
+      mic.dispose()
     }
     sessions.clear()
   }, 'dsh-speech: session resources')
@@ -132,6 +137,23 @@ export function apply(ctx: ClientContext): void {
         }
       },
     }, AnnounceToggle)
+    return dispose
+  })
+
+  ctx.slots.inject('conversation.input.right', () => {
+    const dispose = ctx.slots.register({
+      name: 'conversation.input.right',
+      id: 'speech',
+      order: 20,
+      locale: NS,
+      inject: (sessionId): MicInjected => {
+        const { mic } = resourcesFor(sessionId)
+        return {
+          hooks: { mic },
+          recorder: mic,
+        }
+      },
+    }, MicButton)
     return dispose
   })
 }

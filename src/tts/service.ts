@@ -36,8 +36,13 @@ function firstEnv(names: readonly string[]): string | undefined {
   return undefined
 }
 
+/** Resolve the DashScope console API Key from the environment. */
+export function dashscopeApiKey(): string | undefined {
+  return firstEnv(['DSH_SPEECH_DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'])
+}
+
 /** Resolve the Volcengine console API Key from the environment. */
-function volcengineApiKey(): string | undefined {
+export function volcengineApiKey(): string | undefined {
   return firstEnv([
     'DSH_SPEECH_VOLCENGINE_API_KEY',
     'VOLCENGINE_TTS_API_KEY',
@@ -68,7 +73,7 @@ export class SpeechTTSService {
         : [this.config.engine]
     for (const engine of want) {
       if (engine === 'dashscope') {
-        const apiKey = firstEnv(['DSH_SPEECH_DASHSCOPE_API_KEY', 'DASHSCOPE_API_KEY'])
+        const apiKey = dashscopeApiKey()
         if (apiKey !== undefined) {
           return {
             provider: dashscopeProvider(

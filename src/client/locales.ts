@@ -6,6 +6,9 @@ export const zh = {
   'action.stop': '停止播报',
   'announce.enable': '开启自动播报',
   'announce.disable': '关闭自动播报',
+  'mic.start': '语音输入',
+  'mic.stop': '结束语音输入',
+  'mic.unavailable': '语音输入不可用（需要云端引擎）',
 } satisfies Record<string, string>
 
 /** The speech namespace key union. */
@@ -24,4 +27,7 @@ export const en = {
   'action.stop': 'Stop speaking',
   'announce.enable': 'Enable auto-announce',
   'announce.disable': 'Disable auto-announce',
+  'mic.start': 'Voice input',
+  'mic.stop': 'Stop voice input',
+  'mic.unavailable': 'Voice input unavailable (needs a cloud engine)',
 } satisfies Record<SpeechKey, string>

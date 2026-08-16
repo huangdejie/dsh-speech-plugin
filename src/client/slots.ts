@@ -9,6 +9,7 @@ import type {
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { MessageId } from '@deepseek-ai/dsh-client-connection/client'
 import type { AnnounceMode } from './announce-store.ts'
+import type { MicRecorder, MicView } from './asr-client.ts'
 import type { SpeechView } from './controller.ts'
 
 /** Injected business face of one assistant-message speech entry. */
@@ -41,4 +42,20 @@ export interface AnnounceToggleInjected {
 export type AnnounceToggleProps =
   PropsRuntime<'conversation.session.header.utilities'>
   & InjectFace<AnnounceToggleInjected>
+  & PropsLocale<'speech'>
+
+/** Injected business face of the composer's voice-input entry. */
+export interface MicInjected {
+  hooks: {
+    /** Live recorder state shared by the mic control. */
+    mic: HostObservable<MicView>
+  }
+  /** The recorder itself; the component owns draft text assembly. */
+  recorder: MicRecorder
+}
+
+/** Full props of the composer mic button. */
+export type MicButtonProps =
+  PropsRuntime<'conversation.input.right'>
+  & InjectFace<MicInjected>
   & PropsLocale<'speech'>

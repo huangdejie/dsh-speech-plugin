@@ -68,6 +68,7 @@ export class SpeechController implements HostObservable<SpeechView> {
   private readonly listeners = new Set<() => void>()
   private generation = 0
   private audio: HTMLAudioElement | undefined
+  private systemWatch: number | undefined
   private disposed = false
 
   /** Return the cached immutable view. */
@@ -106,6 +107,10 @@ export class SpeechController implements HostObservable<SpeechView> {
     if (this.audio !== undefined) {
       this.audio.pause()
       this.audio = undefined
+    }
+    if (this.systemWatch !== undefined) {
+      window.clearInterval(this.systemWatch)
+      this.systemWatch = undefined
     }
     if (typeof speechSynthesis !== 'undefined') window.speechSynthesis.cancel()
     this.publish(IDLE)
@@ -228,15 +233,39 @@ export class SpeechController implements HostObservable<SpeechView> {
       this.publishIdle(messageId)
       return
     }
+    // Chrome's engine can wedge after a cancel; clear it before speaking.
+    window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(text)
     const voice = pickVoice()
     if (voice !== undefined) utterance.voice = voice
     utterance.lang = voice?.lang ?? navigator.language
+    const settled = { done: false }
+    const settle = (): void => {
+      if (settled.done) return
+      settled.done = true
+      if (this.systemWatch !== undefined) {
+        window.clearInterval(this.systemWatch)
+        this.systemWatch = undefined
+      }
+      this.publishIdle(messageId)
+    }
     // A canceled utterance also fires end/error; the identity guard keeps a
     // late event from clearing the view of the utterance that replaced it.
-    utterance.onend = () => { this.publishIdle(messageId) }
-    utterance.onerror = () => { this.publishIdle(messageId) }
+    utterance.onend = settle
+    utterance.onerror = settle
     window.speechSynthesis.speak(utterance)
+    // Chrome sometimes fires neither end nor error (wedged engine, hidden
+    // tab); an engine left idle on two consecutive polls (~1s) means the
+    // utterance is over, so the view still returns to the speaker button.
+    let idlePolls = 0
+    this.systemWatch = window.setInterval(() => {
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        idlePolls = 0
+        return
+      }
+      idlePolls += 1
+      if (idlePolls >= 2) settle()
+    }, 500)
   }
 
   /** Clear the view only when the finished playback still owns it. */

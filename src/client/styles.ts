@@ -37,4 +37,34 @@ export const SPEECH_CSS = `
 .dsh-speech-toggle[data-active]:hover {
   color: var(--dsw-alias-state-success-primary);
 }
+.dsh-speech-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border: none;
+  border-radius: 28px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+.dsh-speech-mic:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+.dsh-speech-mic:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+/* Recording reads at a glance: brand-colored icon with a soft pulse. */
+.dsh-speech-mic[data-recording] {
+  color: var(--dsw-alias-brand-primary);
+  animation: dsh-speech-mic-pulse 1.6s ease-in-out infinite;
+}
+@keyframes dsh-speech-mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
 `

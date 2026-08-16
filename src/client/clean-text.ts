@@ -27,6 +27,10 @@ export function cleanTextForSpeech(text: string): string {
     // Emphasis markers and table pipes.
     .replace(/(\*\*|__|\*|~~)/g, '')
     .replace(/\|/g, ' ')
+    // Emoji and pictographs (ZWJ sequences, flags, skin-tone modifiers,
+    // variation selectors) carry no speech: engines answer them with silence
+    // or a long pause mid-playback, so they drop before synthesis.
+    .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u{200D}\u{FE0F}]+/gu, ' ')
     // Horizontal rules and stray markup remainders.
     .replace(/^[ \t]{0,3}(?:[-*_][ \t]*){3,}$/gm, ' ')
     .replace(/\s+/g, ' ')

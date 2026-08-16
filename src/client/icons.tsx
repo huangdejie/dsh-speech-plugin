@@ -31,3 +31,29 @@ export function IconSpeakerOutline16({ size = 16, className }: {
     </svg>
   )
 }
+
+/** Microphone glyph mirroring the primitives' 16px outline style. */
+export function IconMicOutline16({ size = 16, className }: {
+  size?: number
+  className?: string
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      className={className}
+      viewBox="0 0 16 16"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M8 1.5a2.2 2.2 0 0 1 2.2 2.2v3.6a2.2 2.2 0 1 1-4.4 0V3.7A2.2 2.2 0 0 1 8 1.5Z"
+        fill="currentColor"
+      />
+      <path
+        d="M3.8 6.6a.6.6 0 0 1 1.2 0v.7a3 3 0 0 0 6 0v-.7a.6.6 0 0 1 1.2 0v.7a4.2 4.2 0 0 1-3.6 4.16v1.34h1.7a.6.6 0 0 1 0 1.2H5.7a.6.6 0 0 1 0-1.2h1.7v-1.34A4.2 4.2 0 0 1 3.8 7.3v-.7Z"
+        fill="currentColor"
+      />
+    </svg>
+  )
+}
